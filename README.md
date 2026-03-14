@@ -1,25 +1,29 @@
 # fastforms
 
-Fill any form fast. Manage personas locally, fill forms from your terminal.
+Fill any form fast. Manage multiple personas locally, pick the right one at fill time.
 
 ## Quick start
 
 ```bash
-# 1. Create your personas
+# 1. Create your first user + business persona
 npx @1dolinski/fastforms init
 
-# 2. Enable remote debugging in Chrome
+# 2. Add more personas
+npx @1dolinski/fastforms add user
+npx @1dolinski/fastforms add business
+
+# 3. Enable remote debugging in Chrome
 #    Open chrome://inspect/#remote-debugging and toggle it on
 
-# 3. Fill any form (never submits)
+# 4. Fill any form — select which personas to use
 npx @1dolinski/fastforms fill https://example.com/apply
 ```
 
 ## How it works
 
 1. **`fastforms init`** walks you through creating user + business personas interactively
-2. Personas are saved as simple JSON in `.fastforms/user.json` and `.fastforms/business.json`
-3. **`fastforms fill <url>`** connects to Chrome, opens the form, fills it by label matching
+2. Personas are saved as individual JSON files in `.fastforms/users/` and `.fastforms/businesses/`
+3. **`fastforms fill <url>`** connects to Chrome, lets you pick personas, fills by label matching
 4. **Review and submit manually** in Chrome
 
 ## Requirements
@@ -31,31 +35,39 @@ npx @1dolinski/fastforms fill https://example.com/apply
 
 | Command | Description |
 |---|---|
-| `fastforms init` | Create personas interactively |
-| `fastforms fill <url>` | Fill any form |
-| `fastforms edit` | Update existing personas |
+| `fastforms init` | Create your first user + business persona |
+| `fastforms add user` | Add another user persona |
+| `fastforms add business` | Add another business persona |
+| `fastforms list` | Show all saved personas |
+| `fastforms fill <url>` | Fill any form (pick from personas) |
+| `fastforms edit` | Edit an existing persona |
+| `fastforms remove` | Remove a persona |
 | `fastforms personas` | Open web persona manager in Chrome |
 
 ### Fill options
 
 | Option | Description |
 |---|---|
+| `--user <hint>` | Pre-select user persona by name |
+| `--business <hint>` | Pre-select business persona by name |
 | `--web` | Use web app personas instead of local files |
 | `--dir <path>` | Custom persona directory path |
 | `--port <port>` | Chrome debug port (auto-detected) |
-| `--user <hint>` | User persona hint (web mode) |
-| `--business <hint>` | Business persona hint (web mode) |
 
 ## `.fastforms/` directory
 
 ```
 .fastforms/
-  user.json           # Your user persona
-  business.json       # Your business persona
-  dumps/              # Optional: raw text context files
+  users/
+    chris.json          # A user persona
+    work-chris.json     # Another user persona
+  businesses/
+    apinow.json         # A business persona
+    sideproject.json    # Another business persona
+  defaults.json         # Remembers your last selection
 ```
 
-`user.json` — just fill in what you have:
+Each user JSON file — just fill in what you have:
 
 ```json
 {
@@ -74,7 +86,7 @@ npx @1dolinski/fastforms fill https://example.com/apply
 }
 ```
 
-`business.json`:
+Each business JSON file:
 
 ```json
 {

@@ -21,6 +21,10 @@ import {
   loadLocalPersonas,
   saveUserPersona,
   saveBusinessPersona,
+  deletePersonaFile,
+  listPersonaFiles,
+  loadDefaults,
+  saveDefaults,
   userTemplate,
   businessTemplate,
 } from "../lib/local.js";
@@ -52,215 +56,315 @@ function ask(prompt, fallback = "") {
   return new Promise((r) => getRL().question(prompt, (a) => r(a.trim() || fallback)));
 }
 
+function resolveDir() {
+  const dirArg = flag("--dir");
+  return dirArg || findFastformsDir() || join(process.cwd(), ".fastforms");
+}
+
 function help() {
   console.log(`
-  fastforms — Fill any form fast.
+  fastforms — Fill any form fast, with multiple personas.
 
   Usage:
-    fastforms init                  Set up your personas interactively
-    fastforms fill <url>            Fill a form with your personas
-    fastforms edit                  Edit your existing personas
+    fastforms init                  Create your first user + business persona
+    fastforms add user              Add another user persona
+    fastforms add business          Add another business persona
+    fastforms list                  List all personas
+    fastforms edit                  Edit an existing persona
+    fastforms remove                Remove a persona
+    fastforms fill <url>            Fill a form (pick personas interactively)
     fastforms personas              Open web persona manager in Chrome
     fastforms                       Show this help
 
   Options:
     --web               Use web app personas instead of local .fastforms/
     --dir <path>        Path to .fastforms/ directory (default: auto-detect)
-    --user <hint>       User persona name/hint (web mode)
-    --business <hint>   Business persona name/hint (web mode)
+    --user <hint>       User persona name/hint to pre-select
+    --business <hint>   Business persona name/hint to pre-select
     --port <port>       Chrome debug port (auto-detected by default)
 
   Quick start:
-    1. npx fastforms init
-    2. Enable remote debugging: chrome://inspect/#remote-debugging
-    3. npx fastforms fill https://example.com/apply
+    1. npx @1dolinski/fastforms init
+    2. npx @1dolinski/fastforms add user          # add more personas
+    3. Enable remote debugging: chrome://inspect/#remote-debugging
+    4. npx @1dolinski/fastforms fill https://example.com/apply
 `);
 }
 
 // ---------------------------------------------------------------------------
-// init — conversational persona builder
+// Shared persona builder prompts
+// ---------------------------------------------------------------------------
+
+async function promptUser(existing) {
+  const ep = existing?.profile || {};
+  const u = userTemplate();
+
+  const show = (val) => val ? ` [${String(val).slice(0, 40)}]` : "";
+
+  u.name = await ask(`  Name (identifier)${show(existing?.name)}: `, existing?.name || "");
+  u.fullName = await ask(`  Full name${show(ep.fullName)}: `, ep.fullName || "");
+  u.email = await ask(`  Email${show(ep.email)}: `, ep.email || "");
+  u.role = await ask(`  Role / title${show(ep.currentRole)}: `, ep.currentRole || "");
+  u.location = await ask(`  Location${show(ep.location)}: `, ep.location || "");
+  u.linkedIn = await ask(`  LinkedIn${show(ep.linkedIn)}: `, ep.linkedIn || "");
+  u.github = await ask(`  GitHub${show(ep.github)}: `, ep.github || "");
+  u.bio = await ask(`  Short bio${show(ep.bio)}: `, ep.bio || "");
+
+  const existingFacts = {};
+  for (const f of (existing?.customFacts || [])) {
+    if (f.enabled !== false && f.key) existingFacts[f.key] = f.value;
+  }
+  u.facts = { ...existingFacts };
+
+  if (Object.keys(u.facts).length) {
+    console.log("\n  Current facts:");
+    for (const [k, v] of Object.entries(u.facts)) console.log(`    ${k} = ${v}`);
+  }
+  console.log("\n  Add custom facts (key = value). Press Enter to finish.\n");
+  while (true) {
+    const raw = await ask("  fact: ");
+    if (!raw) break;
+    const eq = raw.indexOf("=");
+    if (eq === -1) { console.log("    Use format: key = value"); continue; }
+    u.facts[raw.slice(0, eq).trim()] = raw.slice(eq + 1).trim();
+  }
+
+  return u;
+}
+
+async function promptBusiness(existing) {
+  const bp = existing?.profile || {};
+  const b = businessTemplate();
+
+  const show = (val) => val ? ` [${String(val).slice(0, 40)}]` : "";
+
+  b.name = await ask(`  Company / project name${show(existing?.name)}: `, existing?.name || "");
+  b.oneLiner = await ask(`  One-liner${show(bp.oneLiner)}: `, bp.oneLiner || "");
+  b.website = await ask(`  Website${show(bp.website)}: `, bp.website || "");
+  b.category = await ask(`  Category${show(bp.category)}: `, bp.category || "");
+  b.location = await ask(`  Location${show(bp.location)}: `, bp.location || "");
+  b.problem = await ask(`  Problem you're solving${show(bp.problem)}: `, bp.problem || "");
+  b.solution = await ask(`  Your solution${show(bp.solution)}: `, bp.solution || "");
+  b.targetUsers = await ask(`  Target users${show(bp.targetUsers)}: `, bp.targetUsers || "");
+  b.traction = await ask(`  Traction${show(bp.traction)}: `, bp.traction || "");
+  b.businessModel = await ask(`  Business model${show(bp.businessModel)}: `, bp.businessModel || "");
+  b.differentiators = await ask(`  Differentiators${show(bp.differentiators)}: `, bp.differentiators || "");
+
+  const existingFacts = {};
+  for (const f of (existing?.customFacts || [])) {
+    if (f.enabled !== false && f.key) existingFacts[f.key] = f.value;
+  }
+  b.facts = { ...existingFacts };
+
+  if (Object.keys(b.facts).length) {
+    console.log("\n  Current facts:");
+    for (const [k, v] of Object.entries(b.facts)) console.log(`    ${k} = ${v}`);
+  }
+  console.log("\n  Add business facts (key = value). Press Enter to finish.\n");
+  while (true) {
+    const raw = await ask("  fact: ");
+    if (!raw) break;
+    const eq = raw.indexOf("=");
+    if (eq === -1) { console.log("    Use format: key = value"); continue; }
+    b.facts[raw.slice(0, eq).trim()] = raw.slice(eq + 1).trim();
+  }
+
+  return b;
+}
+
+// ---------------------------------------------------------------------------
+// init — first-time setup: one user + one business
 // ---------------------------------------------------------------------------
 
 async function init() {
-  const dirArg = flag("--dir");
-  const dir = dirArg || join(process.cwd(), ".fastforms");
+  const dir = resolveDir();
 
   console.log("\n  fastforms — Let's set up your personas.\n");
 
-  if (existsSync(join(dir, "user.json"))) {
-    const ans = await ask("  .fastforms/ already exists. Overwrite? [y/N]: ");
-    if (ans.toLowerCase() !== "y") {
-      console.log("  Use 'fastforms edit' to update existing personas.\n");
+  const existingUsers = existsSync(join(dir, "users")) ? listPersonaFiles(dir, "user") : [];
+  if (existingUsers.length) {
+    const ans = await ask(`  ${existingUsers.length} persona(s) already exist. Add another? [Y/n]: `);
+    if (ans.toLowerCase() === "n") {
+      console.log("  Use 'fastforms add user' or 'fastforms add business' to add more.\n");
+      closeRL();
       return;
     }
   }
 
-  // --- User persona ---
   console.log("  --- User persona ---\n");
-  const user = userTemplate();
-
-  user.name = await ask("  Name (identifier): ");
-  user.fullName = await ask("  Full name: ");
-  user.email = await ask("  Email: ");
-  user.role = await ask("  Role / title: ");
-  user.location = await ask("  Location: ");
-  user.linkedIn = await ask("  LinkedIn (optional): ");
-  user.github = await ask("  GitHub (optional): ");
-  user.bio = await ask("  Short bio (optional): ");
-
-  // Custom facts
-  console.log("\n  Add custom facts (e.g. 'x handle = @1dolinski'). Press Enter to skip.\n");
-  while (true) {
-    const raw = await ask("  fact: ");
-    if (!raw) break;
-    const eq = raw.indexOf("=");
-    if (eq === -1) {
-      console.log("    Use format: key = value");
-      continue;
-    }
-    const key = raw.slice(0, eq).trim();
-    const value = raw.slice(eq + 1).trim();
-    if (key) user.facts[key] = value;
-  }
-
-  // --- Business persona ---
-  console.log("\n  --- Business persona ---\n");
-  const biz = businessTemplate();
-
-  biz.name = await ask("  Company / project name: ");
-  biz.oneLiner = await ask("  One-liner: ");
-  biz.website = await ask("  Website (optional): ");
-  biz.category = await ask("  Category (optional): ");
-  biz.location = await ask("  Location (optional): ");
-  biz.problem = await ask("  Problem you're solving (optional): ");
-  biz.solution = await ask("  Your solution (optional): ");
-  biz.targetUsers = await ask("  Target users (optional): ");
-  biz.traction = await ask("  Traction (optional): ");
-  biz.businessModel = await ask("  Business model (optional): ");
-  biz.differentiators = await ask("  Differentiators (optional): ");
-
-  console.log("\n  Add business facts. Press Enter to skip.\n");
-  while (true) {
-    const raw = await ask("  fact: ");
-    if (!raw) break;
-    const eq = raw.indexOf("=");
-    if (eq === -1) {
-      console.log("    Use format: key = value");
-      continue;
-    }
-    const key = raw.slice(0, eq).trim();
-    const value = raw.slice(eq + 1).trim();
-    if (key) biz.facts[key] = value;
-  }
-
-  // Save
+  const user = await promptUser();
   ensureDir(dir);
-  saveUserPersona(dir, user);
-  saveBusinessPersona(dir, biz);
+  const userSlug = saveUserPersona(dir, user);
+  console.log(`\n  Saved users/${userSlug}.json`);
 
-  console.log(`\n  Saved to ${dir}/`);
-  console.log("    user.json");
-  console.log("    business.json");
-  console.log("\n  Next: npx fastforms fill <url>\n");
+  console.log("\n  --- Business persona ---\n");
+  const biz = await promptBusiness();
+  const bizSlug = saveBusinessPersona(dir, biz);
+  console.log(`\n  Saved businesses/${bizSlug}.json`);
+
+  console.log(`\n  Personas saved to ${dir}/`);
+  console.log("  Next: npx @1dolinski/fastforms fill <url>\n");
   closeRL();
 }
 
 // ---------------------------------------------------------------------------
-// edit — re-run init with pre-filled values
+// add — add a single persona
 // ---------------------------------------------------------------------------
 
-async function edit() {
-  const dirArg = flag("--dir");
-  const dir = dirArg || findFastformsDir();
+async function addPersona() {
+  const type = args[1];
+  if (type !== "user" && type !== "business") {
+    console.error("  Usage: fastforms add user|business\n");
+    process.exit(1);
+  }
 
+  const dir = resolveDir();
+  ensureDir(dir);
+
+  if (type === "user") {
+    console.log("\n  --- New user persona ---\n");
+    const user = await promptUser();
+    const slug = saveUserPersona(dir, user);
+    console.log(`\n  Saved users/${slug}.json to ${dir}/\n`);
+  } else {
+    console.log("\n  --- New business persona ---\n");
+    const biz = await promptBusiness();
+    const slug = saveBusinessPersona(dir, biz);
+    console.log(`\n  Saved businesses/${slug}.json to ${dir}/\n`);
+  }
+  closeRL();
+}
+
+// ---------------------------------------------------------------------------
+// list — show all personas
+// ---------------------------------------------------------------------------
+
+function listAll() {
+  const dir = findFastformsDir();
   if (!dir) {
     console.error("  No .fastforms/ directory found. Run 'fastforms init' first.\n");
     process.exit(1);
   }
 
+  const defaults = loadDefaults(dir);
+
+  const users = listPersonaFiles(dir, "user");
+  const businesses = listPersonaFiles(dir, "business");
+
+  console.log(`\n  Personas in ${dir}/\n`);
+
+  if (users.length) {
+    console.log("  User personas:");
+    for (const u of users) {
+      const def = defaults.defaultUser === (u.data?.name || u.slug) ? " (default)" : "";
+      console.log(`    ${u.slug}${def} — ${u.data?.fullName || u.data?.name || "?"} <${u.data?.email || "?"}>`);
+    }
+  } else {
+    console.log("  No user personas. Run: fastforms add user");
+  }
+
+  console.log();
+
+  if (businesses.length) {
+    console.log("  Business personas:");
+    for (const b of businesses) {
+      const def = defaults.defaultBusiness === (b.data?.name || b.slug) ? " (default)" : "";
+      console.log(`    ${b.slug}${def} — ${b.data?.name || "?"}: ${b.data?.oneLiner || ""}`);
+    }
+  } else {
+    console.log("  No business personas. Run: fastforms add business");
+  }
+
+  console.log();
+}
+
+// ---------------------------------------------------------------------------
+// edit — pick a persona and edit it
+// ---------------------------------------------------------------------------
+
+async function edit() {
+  const dir = findFastformsDir();
+  if (!dir) {
+    console.error("  No .fastforms/ directory found. Run 'fastforms init' first.\n");
+    process.exit(1);
+  }
+
+  const users = listPersonaFiles(dir, "user");
+  const businesses = listPersonaFiles(dir, "business");
+  const all = [
+    ...users.map((u) => ({ ...u, type: "user", label: `user: ${u.slug} (${u.data?.fullName || u.data?.name || "?"})` })),
+    ...businesses.map((b) => ({ ...b, type: "business", label: `biz: ${b.slug} (${b.data?.name || "?"})` })),
+  ];
+
+  if (!all.length) {
+    console.error("  No personas found. Run 'fastforms init' first.\n");
+    process.exit(1);
+  }
+
+  console.log("\n  Which persona to edit?\n");
+  all.forEach((p, i) => console.log(`    ${i + 1}. ${p.label}`));
+  const ans = await ask(`\n  Pick [1-${all.length}]: `);
+  const idx = Number(ans) - 1;
+  if (idx < 0 || idx >= all.length) { console.log("  Invalid selection.\n"); closeRL(); return; }
+
+  const picked = all[idx];
   const dump = loadLocalPersonas(dir);
-  const existing = dump.personas[0];
-  const existingBiz = dump.businessPersonas[0];
 
-  console.log("\n  fastforms — Edit your personas. Press Enter to keep current value.\n");
-
-  // --- User ---
-  console.log("  --- User persona ---\n");
-  const ep = existing?.profile || {};
-  const user = userTemplate();
-
-  user.name = await ask(`  Name [${existing?.name || ""}]: `, existing?.name || "");
-  user.fullName = await ask(`  Full name [${ep.fullName || ""}]: `, ep.fullName || "");
-  user.email = await ask(`  Email [${ep.email || ""}]: `, ep.email || "");
-  user.role = await ask(`  Role [${ep.currentRole || ""}]: `, ep.currentRole || "");
-  user.location = await ask(`  Location [${ep.location || ""}]: `, ep.location || "");
-  user.linkedIn = await ask(`  LinkedIn [${ep.linkedIn || ""}]: `, ep.linkedIn || "");
-  user.github = await ask(`  GitHub [${ep.github || ""}]: `, ep.github || "");
-  user.bio = await ask(`  Bio [${ep.bio ? ep.bio.slice(0, 40) + "..." : ""}]: `, ep.bio || "");
-
-  // Carry over existing facts
-  const existingFacts = {};
-  for (const f of (existing?.customFacts || [])) {
-    if (f.enabled !== false) existingFacts[f.key] = f.value;
+  if (picked.type === "user") {
+    const existing = dump.personas.find((p) => p.name === picked.data?.name) || null;
+    console.log(`\n  --- Edit user: ${picked.slug} ---\n`);
+    const updated = await promptUser(existing);
+    if (updated.name !== picked.data?.name) deletePersonaFile(dir, "user", picked.slug);
+    const slug = saveUserPersona(dir, updated);
+    console.log(`\n  Updated users/${slug}.json\n`);
+  } else {
+    const existing = dump.businessPersonas.find((p) => p.name === picked.data?.name) || null;
+    console.log(`\n  --- Edit business: ${picked.slug} ---\n`);
+    const updated = await promptBusiness(existing);
+    if (updated.name !== picked.data?.name) deletePersonaFile(dir, "business", picked.slug);
+    const slug = saveBusinessPersona(dir, updated);
+    console.log(`\n  Updated businesses/${slug}.json\n`);
   }
-  user.facts = { ...existingFacts };
+  closeRL();
+}
 
-  if (Object.keys(user.facts).length) {
-    console.log("\n  Current facts:");
-    for (const [k, v] of Object.entries(user.facts)) {
-      console.log(`    ${k} = ${v}`);
-    }
-  }
-  console.log("\n  Add/update facts (Enter to finish):\n");
-  while (true) {
-    const raw = await ask("  fact: ");
-    if (!raw) break;
-    const eq = raw.indexOf("=");
-    if (eq === -1) { console.log("    Use format: key = value"); continue; }
-    user.facts[raw.slice(0, eq).trim()] = raw.slice(eq + 1).trim();
+// ---------------------------------------------------------------------------
+// remove — delete a persona
+// ---------------------------------------------------------------------------
+
+async function remove() {
+  const dir = findFastformsDir();
+  if (!dir) {
+    console.error("  No .fastforms/ directory found.\n");
+    process.exit(1);
   }
 
-  // --- Business ---
-  console.log("\n  --- Business persona ---\n");
-  const bp = existingBiz?.profile || {};
-  const biz = businessTemplate();
+  const users = listPersonaFiles(dir, "user");
+  const businesses = listPersonaFiles(dir, "business");
+  const all = [
+    ...users.map((u) => ({ ...u, type: "user", label: `user: ${u.slug} (${u.data?.fullName || u.data?.name || "?"})` })),
+    ...businesses.map((b) => ({ ...b, type: "business", label: `biz: ${b.slug} (${b.data?.name || "?"})` })),
+  ];
 
-  biz.name = await ask(`  Company [${existingBiz?.name || ""}]: `, existingBiz?.name || "");
-  biz.oneLiner = await ask(`  One-liner [${bp.oneLiner || ""}]: `, bp.oneLiner || "");
-  biz.website = await ask(`  Website [${bp.website || ""}]: `, bp.website || "");
-  biz.category = await ask(`  Category [${bp.category || ""}]: `, bp.category || "");
-  biz.location = await ask(`  Location [${bp.location || ""}]: `, bp.location || "");
-  biz.problem = await ask(`  Problem [${bp.problem ? bp.problem.slice(0, 40) + "..." : ""}]: `, bp.problem || "");
-  biz.solution = await ask(`  Solution [${bp.solution ? bp.solution.slice(0, 40) + "..." : ""}]: `, bp.solution || "");
-  biz.targetUsers = await ask(`  Target users [${bp.targetUsers ? bp.targetUsers.slice(0, 40) + "..." : ""}]: `, bp.targetUsers || "");
-  biz.traction = await ask(`  Traction [${bp.traction ? bp.traction.slice(0, 40) + "..." : ""}]: `, bp.traction || "");
-  biz.businessModel = await ask(`  Business model [${bp.businessModel ? bp.businessModel.slice(0, 40) + "..." : ""}]: `, bp.businessModel || "");
-  biz.differentiators = await ask(`  Differentiators [${bp.differentiators ? bp.differentiators.slice(0, 40) + "..." : ""}]: `, bp.differentiators || "");
-
-  const existingBizFacts = {};
-  for (const f of (existingBiz?.customFacts || [])) {
-    if (f.enabled !== false) existingBizFacts[f.key] = f.value;
-  }
-  biz.facts = { ...existingBizFacts };
-
-  if (Object.keys(biz.facts).length) {
-    console.log("\n  Current facts:");
-    for (const [k, v] of Object.entries(biz.facts)) {
-      console.log(`    ${k} = ${v}`);
-    }
-  }
-  console.log("\n  Add/update facts (Enter to finish):\n");
-  while (true) {
-    const raw = await ask("  fact: ");
-    if (!raw) break;
-    const eq = raw.indexOf("=");
-    if (eq === -1) { console.log("    Use format: key = value"); continue; }
-    biz.facts[raw.slice(0, eq).trim()] = raw.slice(eq + 1).trim();
+  if (!all.length) {
+    console.error("  No personas to remove.\n");
+    process.exit(1);
   }
 
-  saveUserPersona(dir, user);
-  saveBusinessPersona(dir, biz);
-  console.log(`\n  Updated ${dir}/\n`);
+  console.log("\n  Which persona to remove?\n");
+  all.forEach((p, i) => console.log(`    ${i + 1}. ${p.label}`));
+  const ans = await ask(`\n  Pick [1-${all.length}]: `);
+  const idx = Number(ans) - 1;
+  if (idx < 0 || idx >= all.length) { console.log("  Invalid selection.\n"); closeRL(); return; }
+
+  const picked = all[idx];
+  const confirm = await ask(`  Delete ${picked.type}/${picked.slug}? [y/N]: `);
+  if (confirm.toLowerCase() === "y") {
+    deletePersonaFile(dir, picked.type, picked.slug);
+    console.log(`  Removed ${picked.type}s/${picked.slug}.json\n`);
+  } else {
+    console.log("  Cancelled.\n");
+  }
   closeRL();
 }
 
@@ -285,14 +389,11 @@ async function fill() {
   let browser;
 
   if (hasFlag("--web")) {
-    // Web app mode
     console.log("  Pulling personas from web app...");
     browser = await connectToChrome(port);
     dump = await pullPersonas(browser);
   } else {
-    // Local mode (default)
-    const dirArg = flag("--dir");
-    const dir = dirArg || findFastformsDir();
+    const dir = findFastformsDir();
 
     if (!dir) {
       console.error("  No .fastforms/ directory found.");
@@ -349,9 +450,16 @@ async function fill() {
 
   if (hasFlag("--web")) {
     await offerSetDefaults(user, biz);
+  } else {
+    // Save defaults to local dir
+    const dir = findFastformsDir();
+    if (dir && user && biz) {
+      saveDefaults(dir, { defaultUser: user.name, defaultBusiness: biz.name });
+    }
   }
 
   browser.disconnect();
+  closeRL();
 }
 
 // ---------------------------------------------------------------------------
@@ -382,8 +490,17 @@ switch (command) {
   case "init":
     init().catch((e) => { console.error(e.message); process.exit(1); });
     break;
+  case "add":
+    addPersona().catch((e) => { console.error(e.message); process.exit(1); });
+    break;
+  case "list":
+    listAll();
+    break;
   case "edit":
     edit().catch((e) => { console.error(e.message); process.exit(1); });
+    break;
+  case "remove":
+    remove().catch((e) => { console.error(e.message); process.exit(1); });
     break;
   case "fill":
     fill().catch((e) => { console.error(e.message); process.exit(1); });
