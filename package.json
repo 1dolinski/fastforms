@@ -1,0 +1,33 @@
+{
+  "name": "@1dolinski/fastforms",
+  "version": "0.1.1",
+  "description": "Fill any form fast. Manage personas on the web, fill forms from your terminal.",
+  "type": "module",
+  "bin": {
+    "fastforms": "bin/fastforms.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "SKILL.md",
+    "README.md"
+  ],
+  "dependencies": {
+    "puppeteer-core": "^24.39.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1dolinski/fastforms.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "forms",
+    "automation",
+    "chrome",
+    "puppeteer",
+    "personas"
+  ]
+}
