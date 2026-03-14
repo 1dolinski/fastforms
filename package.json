@@ -1,6 +1,6 @@
 {
   "name": "@1dolinski/fastforms",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Fill any form fast. Manage personas on the web, fill forms from your terminal.",
   "type": "module",
   "bin": {
@@ -13,7 +13,7 @@
     "README.md"
   ],
   "dependencies": {
-    "puppeteer-core": "^24.39.1"
+    "ws": "^8.18.0"
   },
   "engines": {
     "node": ">=18"
@@ -27,7 +27,7 @@
     "forms",
     "automation",
     "chrome",
-    "puppeteer",
+    "cdp",
     "personas"
   ]
 }
