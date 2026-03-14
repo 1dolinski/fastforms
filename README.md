@@ -6,13 +6,13 @@ Fill any form fast. Manage personas locally, fill forms from your terminal.
 
 ```bash
 # 1. Create your personas
-npx fastforms init
+npx @1dolinski/fastforms init
 
 # 2. Enable remote debugging in Chrome
 #    Open chrome://inspect/#remote-debugging and toggle it on
 
 # 3. Fill any form (never submits)
-npx fastforms fill https://example.com/apply
+npx @1dolinski/fastforms fill https://example.com/apply
 ```
 
 ## How it works

@@ -24,22 +24,22 @@ Use this skill when the user says any of:
 
 ```bash
 # 1. Create your personas interactively
-npx fastforms init
+npx @1dolinski/fastforms init
 
 # 2. Enable remote debugging in Chrome
 #    Open chrome://inspect/#remote-debugging
 
 # 3. Fill any form
-npx fastforms fill https://example.com/apply
+npx @1dolinski/fastforms fill https://example.com/apply
 ```
 
 ## Commands
 
-### `npx fastforms init`
+### `npx @1dolinski/fastforms init`
 
 Conversational persona builder. Walks through user + business persona fields, saves to `.fastforms/user.json` and `.fastforms/business.json`.
 
-### `npx fastforms fill <url>`
+### `npx @1dolinski/fastforms fill <url>`
 
 Fills any form. Reads personas from local `.fastforms/` directory by default.
 
@@ -48,11 +48,11 @@ Options:
 - `--dir <path>` — custom path to persona directory
 - `--port <port>` — Chrome debug port (auto-detected by default)
 
-### `npx fastforms edit`
+### `npx @1dolinski/fastforms edit`
 
 Re-run the persona builder with current values pre-filled.
 
-### `npx fastforms personas`
+### `npx @1dolinski/fastforms personas`
 
 Opens the web persona manager in Chrome.
 
@@ -73,7 +73,7 @@ Opens the web persona manager in Chrome.
 
 When the user asks you to fill a form:
 
-1. Check if `.fastforms/` exists. If not, run `npx fastforms init`
-2. Run `npx fastforms fill <the-url>`
+1. Check if `.fastforms/` exists. If not, run `npx @1dolinski/fastforms init`
+2. Run `npx @1dolinski/fastforms fill <the-url>`
 3. If Chrome debugging isn't enabled, tell the user to open `chrome://inspect/#remote-debugging`
 4. After filling, tell the user to review in Chrome and submit manually
