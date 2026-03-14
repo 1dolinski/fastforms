@@ -3,7 +3,7 @@
 import { createInterface } from "readline";
 import { join } from "path";
 import { homedir } from "os";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 
 import { ensureChromeReady } from "../lib/chrome.js";
 import {
@@ -31,6 +31,17 @@ import {
   businessTemplate,
   formTemplate,
 } from "../lib/local.js";
+
+// Load .env files for PRIVATE_KEY (used by x402 twitter import)
+function loadEnvFile(path) {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf-8").split("\n")) {
+    const match = line.match(/^\s*([\w]+)\s*=\s*(.+?)\s*$/);
+    if (match && !process.env[match[1]]) process.env[match[1]] = match[2];
+  }
+}
+loadEnvFile(join(process.cwd(), ".fastforms", ".env"));
+loadEnvFile(join(process.cwd(), ".env"));
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -69,16 +80,14 @@ function help() {
   fastforms — Fill any form fast, with multiple personas.
 
   Usage:
-    fastforms init                  Create your first user + business persona
-    fastforms add user              Add another user persona
-    fastforms add business          Add another business persona
-    fastforms add form              Add a form persona (org + purpose + answers)
-    fastforms list                  List all personas
-    fastforms edit                  Edit an existing persona
-    fastforms remove                Remove a persona
-    fastforms fill <url>            Fill a form (pick personas interactively)
-    fastforms personas              Open web persona manager in Chrome
-    fastforms                       Show this help
+    fastforms init                        Create your first user + business persona
+    fastforms import twitter <handle>     Import user persona from Twitter (x402)
+    fastforms add user|business|form      Add another persona
+    fastforms list                        List all personas
+    fastforms edit                        Edit an existing persona
+    fastforms remove                      Remove a persona
+    fastforms fill <url>                  Fill a form (pick personas interactively)
+    fastforms personas                    Open web persona manager in Chrome
 
   Options:
     --web               Use web app personas instead of local .fastforms/
@@ -93,9 +102,13 @@ function help() {
     business  — what you're building (company, product, traction)
     form      — who's asking and why (org, purpose, form-specific answers)
 
+  Twitter import:
+    Requires PRIVATE_KEY env var (Base wallet with USDC, $0.01/call).
+    Set in .env, .fastforms/.env, or export directly.
+
   Quick start:
     1. npx @1dolinski/fastforms init
-    2. npx @1dolinski/fastforms add form          # add form-specific context
+    2. npx @1dolinski/fastforms add form
     3. Enable remote debugging: chrome://inspect/#remote-debugging
     4. npx @1dolinski/fastforms fill https://example.com/apply
 `);
@@ -606,12 +619,61 @@ async function openPersonas() {
 }
 
 // ---------------------------------------------------------------------------
+// import — pull persona from external source
+// ---------------------------------------------------------------------------
+
+async function importPersona() {
+  const source = args[1];
+  const handle = args[2];
+
+  if (source !== "twitter" || !handle) {
+    console.error("  Usage: fastforms import twitter <handle>\n");
+    console.error("  Requires PRIVATE_KEY env var (Base wallet with USDC).");
+    console.error("  Set in .env, .fastforms/.env, or: export PRIVATE_KEY=0x...\n");
+    process.exit(1);
+  }
+
+  console.log(`\n  fastforms import — Twitter → user persona\n`);
+
+  let fetchTwitterProfile, twitterToPersona;
+  try {
+    ({ fetchTwitterProfile, twitterToPersona } = await import("../lib/x402.js"));
+  } catch (e) {
+    console.error("  Failed to load x402 module:", e.message);
+    console.error("\n  Make sure dependencies are installed:");
+    console.error("    npm install viem @x402/fetch @x402/evm\n");
+    process.exit(1);
+  }
+
+  const data = await fetchTwitterProfile(handle);
+  const persona = twitterToPersona(data, handle);
+
+  console.log(`\n  Twitter profile for @${handle}:`);
+  if (persona.fullName) console.log(`    Name: ${persona.fullName}`);
+  if (persona.bio) console.log(`    Bio: ${persona.bio.slice(0, 80)}${persona.bio.length > 80 ? "..." : ""}`);
+  if (persona.location) console.log(`    Location: ${persona.location}`);
+  if (persona.portfolio) console.log(`    Website: ${persona.portfolio}`);
+  const factCount = Object.keys(persona.facts || {}).length;
+  if (factCount) console.log(`    Facts: ${factCount}`);
+
+  const dir = resolveDir();
+  ensureDir(dir);
+  const slug = saveUserPersona(dir, persona);
+  console.log(`\n  Saved to ${dir}/users/${slug}.json`);
+  console.log("  Run 'fastforms edit' to add email, role, and other details.\n");
+  closeRL();
+}
+
+// ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
 
 switch (command) {
   case "init":
     init().catch((e) => { console.error(e.message); process.exit(1); });
+    break;
+  case "import":
+    importPersona().catch((e) => { console.error(e.message); process.exit(1); });
     break;
   case "add":
     addPersona().catch((e) => { console.error(e.message); process.exit(1); });

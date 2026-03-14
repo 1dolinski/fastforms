@@ -12,6 +12,7 @@ Use this skill when the user says any of:
 - "use fastforms", "fastforms fill"
 - "set up my personas", "init fastforms"
 - "add a persona", "add a form persona"
+- "import from twitter", "pull my twitter profile"
 
 ## What it does
 
@@ -21,17 +22,22 @@ Use this skill when the user says any of:
    - **User** — who you are (name, email, bio, skills)
    - **Business** — what you're building (company, product, traction)
    - **Form** — who's asking and why (org, purpose, form-specific answers)
-2. Connects to Chrome via the DevTools Protocol
-3. Lets you pick which user + business + form persona to use at fill time
-4. Fills any form using label-matching — never submits
+2. Can import user personas from Twitter via x402 micropayment
+3. Connects to Chrome via the DevTools Protocol
+4. Lets you pick which user + business + form persona to use at fill time
+5. Fills any form using label-matching — never submits
 
 ## Quick start
 
 ```bash
-# 1. Create your first user + business persona
+# 1. Create your first personas
 npx @1dolinski/fastforms init
 
-# 2. Add a form persona with org context and form-specific answers
+# Or import from Twitter ($0.01 USDC on Base)
+export PRIVATE_KEY=0x...
+npx @1dolinski/fastforms import twitter <your-handle>
+
+# 2. Add form-specific context
 npx @1dolinski/fastforms add form
 
 # 3. Enable remote debugging in Chrome
@@ -46,6 +52,10 @@ npx @1dolinski/fastforms fill https://example.com/apply
 ### `npx @1dolinski/fastforms init`
 
 Walks through creating a user + business persona (optionally a form persona too).
+
+### `npx @1dolinski/fastforms import twitter <username>`
+
+Imports a user persona from Twitter via x402 micropayment ($0.01 USDC on Base). Requires `PRIVATE_KEY` env var set to a Base wallet private key.
 
 ### `npx @1dolinski/fastforms add user|business|form`
 
@@ -84,9 +94,9 @@ Who you are. Name, email, role, GitHub, LinkedIn, bio, custom facts.
 What you're building. Company, product, one-liner, traction, business model.
 
 ### Form persona
-Who's asking and why. The organization that owns the form, the form's purpose, and **form-specific answers** that override user/business data. For example, "what attracts you to Nitro" is a Nitro-specific answer — it belongs on the form persona, not on your user or business persona.
+Who's asking and why. The organization that owns the form, the form's purpose, and **form-specific answers** that override user/business data.
 
-Form personas auto-match by URL. If your form persona has `urls: ["nitroacc.xyz"]` and you fill `https://nitroacc.xyz/apply`, it auto-selects.
+Form personas auto-match by URL. If your form persona has `urls: ["apply.ycombinator.com"]` and you fill that URL, it auto-selects.
 
 ## How it works
 
@@ -107,6 +117,12 @@ When the user asks you to fill a form:
 3. Run `npx @1dolinski/fastforms fill <the-url>`
 4. If Chrome debugging isn't enabled, tell the user to open `chrome://inspect/#remote-debugging`
 5. After filling, tell the user to review in Chrome and submit manually
+
+When the user wants to import from Twitter:
+
+1. They need `PRIVATE_KEY` set (Base wallet with USDC)
+2. Run `npx @1dolinski/fastforms import twitter <handle>`
+3. The persona will be saved to `.fastforms/users/<handle>.json`
 
 When the user wants to add a persona:
 

@@ -1,6 +1,6 @@
 {
   "name": "@1dolinski/fastforms",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Fill any form fast. Manage personas on the web, fill forms from your terminal.",
   "type": "module",
   "bin": {
@@ -13,6 +13,9 @@
     "README.md"
   ],
   "dependencies": {
+    "@x402/evm": "^2.6.0",
+    "@x402/fetch": "^2.6.0",
+    "viem": "^2.47.4",
     "ws": "^8.18.0"
   },
   "engines": {
@@ -28,6 +31,8 @@
     "automation",
     "chrome",
     "cdp",
-    "personas"
+    "personas",
+    "x402",
+    "twitter"
   ]
 }

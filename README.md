@@ -8,8 +8,8 @@ Fill any form fast. Manage multiple personas locally, pick the right ones at fil
 # 1. Create your first user + business persona
 npx @1dolinski/fastforms init
 
-# 2. Add a form persona (org context + form-specific answers)
-npx @1dolinski/fastforms add form
+# 2. Or import from Twitter (requires PRIVATE_KEY for x402 payment)
+npx @1dolinski/fastforms import twitter <your-handle>
 
 # 3. Enable remote debugging in Chrome
 #    Open chrome://inspect/#remote-debugging and toggle it on
@@ -21,16 +21,17 @@ npx @1dolinski/fastforms fill https://example.com/apply
 ## How it works
 
 1. **`fastforms init`** walks you through creating user + business personas interactively
-2. **`fastforms add form`** captures the form's org, purpose, and form-specific answers
-3. Personas are saved as individual JSON files in `.fastforms/`
-4. **`fastforms fill <url>`** connects to Chrome, picks personas, fills by label matching
-5. Form personas auto-match by URL — no need to specify which one
+2. **`fastforms import twitter`** pulls your profile from Twitter via x402 micropayment
+3. **`fastforms add form`** captures the form's org, purpose, and form-specific answers
+4. Personas are saved as individual JSON files in `.fastforms/`
+5. **`fastforms fill <url>`** connects to Chrome, picks personas, fills by label matching
 6. **Review and submit manually** in Chrome
 
 ## Requirements
 
 - Chrome >= 144
 - Node.js >= 18
+- (Optional) `PRIVATE_KEY` env var for Twitter import — Base network wallet with USDC
 
 ## Persona types
 
@@ -40,13 +41,14 @@ npx @1dolinski/fastforms fill https://example.com/apply
 | **Business** | What you're building | Company, product, traction, one-liner |
 | **Form** | Who's asking & why | Org, purpose, form-specific answers |
 
-Form persona facts **override** user/business data. "What attracts you to Nitro" belongs on the Nitro form persona, not on your user persona.
+Form persona facts **override** user/business data. Form-specific questions like "why this accelerator" belong on the form persona, not your user persona.
 
 ## Commands
 
 | Command | Description |
 |---|---|
 | `fastforms init` | Create your first user + business persona |
+| `fastforms import twitter <handle>` | Import user persona from Twitter via x402 |
 | `fastforms add user` | Add another user persona |
 | `fastforms add business` | Add another business persona |
 | `fastforms add form` | Add a form persona (org + answers) |
@@ -72,68 +74,83 @@ Form persona facts **override** user/business data. "What attracts you to Nitro"
 ```
 .fastforms/
   users/
-    chris.json
-    work-chris.json
+    jane.json
+    work-jane.json
   businesses/
-    apinow.json
-    sideproject.json
+    acme-labs.json
+    side-project.json
   forms/
-    nitro-accelerator.json
     yc-application.json
+    grant-proposal.json
   defaults.json
 ```
 
-### User persona (`users/chris.json`)
+### User persona (`users/jane.json`)
 
 ```json
 {
-  "name": "chris",
-  "fullName": "Chris Dolinski",
-  "email": "chris@example.com",
-  "role": "Founder",
-  "location": "Toronto, ON",
-  "linkedIn": "linkedin.com/in/1dolinski",
-  "github": "github.com/1dolinski",
-  "bio": "Serial entrepreneur",
+  "name": "jane",
+  "fullName": "Jane Smith",
+  "email": "jane@example.com",
+  "role": "Founder & CEO",
+  "location": "San Francisco, CA",
+  "linkedIn": "linkedin.com/in/janesmith",
+  "github": "github.com/janesmith",
+  "bio": "Building developer tools. Previously at Stripe.",
   "facts": {
-    "x handle": "@1dolinski",
-    "telegram": "@chris"
+    "x handle": "@janesmith",
+    "telegram": "@jane"
   }
 }
 ```
 
-### Business persona (`businesses/apinow.json`)
+### Business persona (`businesses/acme-labs.json`)
 
 ```json
 {
-  "name": "APINow.fun",
-  "oneLiner": "x402 everything",
-  "website": "apinow.fun",
-  "problem": "Payments are broken",
-  "solution": "Fix them with x402"
+  "name": "Acme Labs",
+  "oneLiner": "AI-powered form automation",
+  "website": "acmelabs.dev",
+  "problem": "Filling out repetitive applications wastes hours",
+  "solution": "Smart persona-based form filling"
 }
 ```
 
-### Form persona (`forms/nitro-accelerator.json`)
+### Form persona (`forms/yc-application.json`)
 
 ```json
 {
-  "name": "Nitro Accelerator",
-  "urls": ["nitroacc.xyz"],
-  "organization": "Nitro",
-  "purpose": "Crypto accelerator application for early-stage founders",
-  "notes": "NYC-based, 1-month residency",
+  "name": "YC Application",
+  "urls": ["apply.ycombinator.com"],
+  "organization": "Y Combinator",
+  "purpose": "Startup accelerator application",
+  "notes": "3-month program in SF, $500k investment",
   "deadline": "2026-04-01",
   "facts": {
-    "attracts": "The density of high-signal founders and the NYC residency",
-    "mentor": "Vitalik — his work on public goods aligns with our mission",
-    "spend": "Engineering hires and infrastructure for mainnet launch",
-    "last week": "Shipped v2 of the API, onboarded 3 beta customers"
+    "why this accelerator": "The alumni network and partner expertise in developer tools",
+    "spend": "Engineering hires and go-to-market",
+    "last week": "Launched beta, onboarded 50 users, 30% week-over-week growth"
   }
 }
 ```
 
 The `facts` on a form persona are form-specific answers keyed by label hints. They override user/business data when a form field matches.
+
+## Twitter import (x402)
+
+Pull your Twitter profile into a user persona with a single command. Uses the [x402 protocol](https://x402.org/) for pay-per-call access ($0.01 USDC on Base).
+
+```bash
+# Set your Base wallet private key
+export PRIVATE_KEY=0x...
+
+# Import your Twitter profile
+npx @1dolinski/fastforms import twitter janesmith
+```
+
+This creates `users/janesmith.json` pre-filled with your name, bio, location, and handle from Twitter. You can then `fastforms edit` to add more details.
+
+Requires a Base network wallet with USDC. Powered by [APINow.fun](https://apinow.fun).
 
 ## Web app (optional)
 
