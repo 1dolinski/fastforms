@@ -1,6 +1,6 @@
 # fastforms
 
-Fill any form fast. Manage multiple personas locally, pick the right one at fill time.
+Fill any form fast. Manage multiple personas locally, pick the right ones at fill time.
 
 ## Quick start
 
@@ -8,9 +8,8 @@ Fill any form fast. Manage multiple personas locally, pick the right one at fill
 # 1. Create your first user + business persona
 npx @1dolinski/fastforms init
 
-# 2. Add more personas
-npx @1dolinski/fastforms add user
-npx @1dolinski/fastforms add business
+# 2. Add a form persona (org context + form-specific answers)
+npx @1dolinski/fastforms add form
 
 # 3. Enable remote debugging in Chrome
 #    Open chrome://inspect/#remote-debugging and toggle it on
@@ -22,14 +21,26 @@ npx @1dolinski/fastforms fill https://example.com/apply
 ## How it works
 
 1. **`fastforms init`** walks you through creating user + business personas interactively
-2. Personas are saved as individual JSON files in `.fastforms/users/` and `.fastforms/businesses/`
-3. **`fastforms fill <url>`** connects to Chrome, lets you pick personas, fills by label matching
-4. **Review and submit manually** in Chrome
+2. **`fastforms add form`** captures the form's org, purpose, and form-specific answers
+3. Personas are saved as individual JSON files in `.fastforms/`
+4. **`fastforms fill <url>`** connects to Chrome, picks personas, fills by label matching
+5. Form personas auto-match by URL — no need to specify which one
+6. **Review and submit manually** in Chrome
 
 ## Requirements
 
 - Chrome >= 144
 - Node.js >= 18
+
+## Persona types
+
+| Type | What it captures | Example |
+|---|---|---|
+| **User** | Who you are | Name, email, role, GitHub, bio |
+| **Business** | What you're building | Company, product, traction, one-liner |
+| **Form** | Who's asking & why | Org, purpose, form-specific answers |
+
+Form persona facts **override** user/business data. "What attracts you to Nitro" belongs on the Nitro form persona, not on your user persona.
 
 ## Commands
 
@@ -38,6 +49,7 @@ npx @1dolinski/fastforms fill https://example.com/apply
 | `fastforms init` | Create your first user + business persona |
 | `fastforms add user` | Add another user persona |
 | `fastforms add business` | Add another business persona |
+| `fastforms add form` | Add a form persona (org + answers) |
 | `fastforms list` | Show all saved personas |
 | `fastforms fill <url>` | Fill any form (pick from personas) |
 | `fastforms edit` | Edit an existing persona |
@@ -50,6 +62,7 @@ npx @1dolinski/fastforms fill https://example.com/apply
 |---|---|
 | `--user <hint>` | Pre-select user persona by name |
 | `--business <hint>` | Pre-select business persona by name |
+| `--form <hint>` | Pre-select form persona by name |
 | `--web` | Use web app personas instead of local files |
 | `--dir <path>` | Custom persona directory path |
 | `--port <port>` | Chrome debug port (auto-detected) |
@@ -59,15 +72,18 @@ npx @1dolinski/fastforms fill https://example.com/apply
 ```
 .fastforms/
   users/
-    chris.json          # A user persona
-    work-chris.json     # Another user persona
+    chris.json
+    work-chris.json
   businesses/
-    apinow.json         # A business persona
-    sideproject.json    # Another business persona
-  defaults.json         # Remembers your last selection
+    apinow.json
+    sideproject.json
+  forms/
+    nitro-accelerator.json
+    yc-application.json
+  defaults.json
 ```
 
-Each user JSON file — just fill in what you have:
+### User persona (`users/chris.json`)
 
 ```json
 {
@@ -86,7 +102,7 @@ Each user JSON file — just fill in what you have:
 }
 ```
 
-Each business JSON file:
+### Business persona (`businesses/apinow.json`)
 
 ```json
 {
@@ -97,6 +113,27 @@ Each business JSON file:
   "solution": "Fix them with x402"
 }
 ```
+
+### Form persona (`forms/nitro-accelerator.json`)
+
+```json
+{
+  "name": "Nitro Accelerator",
+  "urls": ["nitroacc.xyz"],
+  "organization": "Nitro",
+  "purpose": "Crypto accelerator application for early-stage founders",
+  "notes": "NYC-based, 1-month residency",
+  "deadline": "2026-04-01",
+  "facts": {
+    "attracts": "The density of high-signal founders and the NYC residency",
+    "mentor": "Vitalik — his work on public goods aligns with our mission",
+    "spend": "Engineering hires and infrastructure for mainnet launch",
+    "last week": "Shipped v2 of the API, onboarded 3 beta customers"
+  }
+}
+```
+
+The `facts` on a form persona are form-specific answers keyed by label hints. They override user/business data when a form field matches.
 
 ## Web app (optional)
 
@@ -116,7 +153,7 @@ node bin/fastforms.js fill https://example.com/apply
 
 ### Adding a new form mapping
 
-1. Add a `buildXxxData(user, biz)` function in `lib/fill.js`
+1. Add a `buildXxxData(user, biz, form)` function in `lib/fill.js`
 2. Add a URL check in `fillForm()`
 3. Test with `node bin/fastforms.js fill <url>`
 

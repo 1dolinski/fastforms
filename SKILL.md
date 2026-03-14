@@ -11,15 +11,18 @@ Use this skill when the user says any of:
 - "fill this form with my persona"
 - "use fastforms", "fastforms fill"
 - "set up my personas", "init fastforms"
-- "add a persona", "add another persona"
+- "add a persona", "add a form persona"
 
 ## What it does
 
 `fastforms` is a CLI tool that:
 
-1. Manages multiple personas locally in `.fastforms/users/` and `.fastforms/businesses/` directories
+1. Manages three types of personas locally in `.fastforms/`:
+   - **User** — who you are (name, email, bio, skills)
+   - **Business** — what you're building (company, product, traction)
+   - **Form** — who's asking and why (org, purpose, form-specific answers)
 2. Connects to Chrome via the DevTools Protocol
-3. Lets you pick which user + business persona to use at fill time
+3. Lets you pick which user + business + form persona to use at fill time
 4. Fills any form using label-matching — never submits
 
 ## Quick start
@@ -28,9 +31,8 @@ Use this skill when the user says any of:
 # 1. Create your first user + business persona
 npx @1dolinski/fastforms init
 
-# 2. Add more personas
-npx @1dolinski/fastforms add user
-npx @1dolinski/fastforms add business
+# 2. Add a form persona with org context and form-specific answers
+npx @1dolinski/fastforms add form
 
 # 3. Enable remote debugging in Chrome
 #    Open chrome://inspect/#remote-debugging
@@ -43,65 +45,72 @@ npx @1dolinski/fastforms fill https://example.com/apply
 
 ### `npx @1dolinski/fastforms init`
 
-Walks through creating a user + business persona. Saves to `.fastforms/users/<name>.json` and `.fastforms/businesses/<name>.json`.
+Walks through creating a user + business persona (optionally a form persona too).
 
-### `npx @1dolinski/fastforms add user|business`
+### `npx @1dolinski/fastforms add user|business|form`
 
-Add another user or business persona. Run as many times as you want.
+Add another persona of any type.
 
 ### `npx @1dolinski/fastforms list`
 
-Show all saved personas.
+Show all saved personas across all types.
 
 ### `npx @1dolinski/fastforms fill <url>`
 
-Fills any form. If you have multiple personas, prompts you to pick which ones to use.
+Fills any form. If you have multiple personas, prompts you to pick. Form personas auto-match by URL.
 
 Options:
 - `--user <hint>` — pre-select a user persona by name
 - `--business <hint>` — pre-select a business persona by name
+- `--form <hint>` — pre-select a form persona by name
 - `--web` — use web app personas (https://293-fastforms.vercel.app) instead of local files
 - `--dir <path>` — custom path to persona directory
 - `--port <port>` — Chrome debug port (auto-detected by default)
 
 ### `npx @1dolinski/fastforms edit`
 
-Pick a persona to edit interactively.
+Pick any persona to edit interactively.
 
 ### `npx @1dolinski/fastforms remove`
 
-Pick a persona to delete.
+Pick any persona to delete.
 
-### `npx @1dolinski/fastforms personas`
+## Persona types
 
-Opens the web persona manager in Chrome.
+### User persona
+Who you are. Name, email, role, GitHub, LinkedIn, bio, custom facts.
 
-## Persona sources
+### Business persona
+What you're building. Company, product, one-liner, traction, business model.
 
-1. **Local `.fastforms/` directory** (default) — simple JSON files, no web app needed
-2. **Web app** (`--web` flag) — https://293-fastforms.vercel.app/persona manages personas in localStorage, CLI reads via CDP
+### Form persona
+Who's asking and why. The organization that owns the form, the form's purpose, and **form-specific answers** that override user/business data. For example, "what attracts you to Nitro" is a Nitro-specific answer — it belongs on the form persona, not on your user or business persona.
+
+Form personas auto-match by URL. If your form persona has `urls: ["nitroacc.xyz"]` and you fill `https://nitroacc.xyz/apply`, it auto-selects.
 
 ## How it works
 
-1. Reads all personas from `.fastforms/users/` and `.fastforms/businesses/`
+1. Reads all personas from `.fastforms/users/`, `.fastforms/businesses/`, and `.fastforms/forms/`
 2. If multiple, prompts you to pick which user + business persona to use
-3. Auto-discovers Chrome's debug port from `DevToolsActivePort`
-4. Opens (or reuses) the target form URL tab
-5. Fills using label-matching heuristics. Has site-specific mappings for known forms.
-6. Shows what was filled, what was skipped. **Never submits.**
+3. Auto-matches form persona by URL (or prompts if multiple)
+4. Auto-discovers Chrome's debug port from `DevToolsActivePort`
+5. Opens (or reuses) the target form URL tab
+6. Fills using label-matching. Form persona facts are checked first as overrides.
+7. Shows what was filled, what was skipped. **Never submits.**
 
 ## Agent instructions
 
 When the user asks you to fill a form:
 
 1. Check if `.fastforms/` exists. If not, run `npx @1dolinski/fastforms init`
-2. Run `npx @1dolinski/fastforms fill <the-url>`
-3. If Chrome debugging isn't enabled, tell the user to open `chrome://inspect/#remote-debugging`
-4. After filling, tell the user to review in Chrome and submit manually
+2. If the form is new, suggest `npx @1dolinski/fastforms add form` to capture form-specific context
+3. Run `npx @1dolinski/fastforms fill <the-url>`
+4. If Chrome debugging isn't enabled, tell the user to open `chrome://inspect/#remote-debugging`
+5. After filling, tell the user to review in Chrome and submit manually
 
 When the user wants to add a persona:
 
-1. Run `npx @1dolinski/fastforms add user` or `npx @1dolinski/fastforms add business`
+1. Run `npx @1dolinski/fastforms add user|business|form`
 
 When the user wants to see their personas:
 

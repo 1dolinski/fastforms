@@ -10,6 +10,7 @@ import {
   connectToChrome,
   pullPersonas,
   selectPersonas,
+  selectFormPersona,
   showPersonaDetails,
   offerSetDefaults,
   offerOpenPersonaManager,
@@ -21,12 +22,14 @@ import {
   loadLocalPersonas,
   saveUserPersona,
   saveBusinessPersona,
+  saveFormPersona,
   deletePersonaFile,
   listPersonaFiles,
   loadDefaults,
   saveDefaults,
   userTemplate,
   businessTemplate,
+  formTemplate,
 } from "../lib/local.js";
 
 const args = process.argv.slice(2);
@@ -69,6 +72,7 @@ function help() {
     fastforms init                  Create your first user + business persona
     fastforms add user              Add another user persona
     fastforms add business          Add another business persona
+    fastforms add form              Add a form persona (org + purpose + answers)
     fastforms list                  List all personas
     fastforms edit                  Edit an existing persona
     fastforms remove                Remove a persona
@@ -81,11 +85,17 @@ function help() {
     --dir <path>        Path to .fastforms/ directory (default: auto-detect)
     --user <hint>       User persona name/hint to pre-select
     --business <hint>   Business persona name/hint to pre-select
+    --form <hint>       Form persona name/hint to pre-select
     --port <port>       Chrome debug port (auto-detected by default)
+
+  Persona types:
+    user      — who you are (name, email, bio, skills)
+    business  — what you're building (company, product, traction)
+    form      — who's asking and why (org, purpose, form-specific answers)
 
   Quick start:
     1. npx @1dolinski/fastforms init
-    2. npx @1dolinski/fastforms add user          # add more personas
+    2. npx @1dolinski/fastforms add form          # add form-specific context
     3. Enable remote debugging: chrome://inspect/#remote-debugging
     4. npx @1dolinski/fastforms fill https://example.com/apply
 `);
@@ -172,6 +182,55 @@ async function promptBusiness(existing) {
   return b;
 }
 
+async function promptForm(existing) {
+  const ep = existing?.profile || {};
+  const f = formTemplate();
+
+  const show = (val) => val ? ` [${String(val).slice(0, 40)}]` : "";
+
+  f.name = await ask(`  Form name (e.g. "Nitro Accelerator")${show(existing?.name)}: `, existing?.name || "");
+  f.organization = await ask(`  Organization${show(ep.organization)}: `, ep.organization || "");
+  f.purpose = await ask(`  Purpose (e.g. "crypto accelerator application")${show(ep.purpose)}: `, ep.purpose || "");
+
+  const existingUrls = existing?.urls || [];
+  if (existingUrls.length) {
+    console.log(`\n  Current URLs: ${existingUrls.join(", ")}`);
+  }
+  console.log("\n  Add URL patterns this form matches (press Enter to finish):\n");
+  f.urls = [...existingUrls];
+  while (true) {
+    const url = await ask("  url: ");
+    if (!url) break;
+    if (!f.urls.includes(url)) f.urls.push(url);
+  }
+
+  f.notes = await ask(`  Notes / context${show(ep.notes)}: `, ep.notes || "");
+  f.deadline = await ask(`  Deadline${show(ep.deadline)}: `, ep.deadline || "");
+  f.requirements = await ask(`  Requirements${show(ep.requirements)}: `, ep.requirements || "");
+
+  const existingFacts = {};
+  for (const cf of (existing?.customFacts || [])) {
+    if (cf.enabled !== false && cf.key) existingFacts[cf.key] = cf.value;
+  }
+  f.facts = { ...existingFacts };
+
+  if (Object.keys(f.facts).length) {
+    console.log("\n  Current form-specific answers:");
+    for (const [k, v] of Object.entries(f.facts)) console.log(`    ${k} = ${v}`);
+  }
+  console.log("\n  Add form-specific answers (label hint = answer). Press Enter to finish.");
+  console.log("  These override user/business data for matching fields.\n");
+  while (true) {
+    const raw = await ask("  answer: ");
+    if (!raw) break;
+    const eq = raw.indexOf("=");
+    if (eq === -1) { console.log("    Use format: field hint = answer"); continue; }
+    f.facts[raw.slice(0, eq).trim()] = raw.slice(eq + 1).trim();
+  }
+
+  return f;
+}
+
 // ---------------------------------------------------------------------------
 // init — first-time setup: one user + one business
 // ---------------------------------------------------------------------------
@@ -185,7 +244,7 @@ async function init() {
   if (existingUsers.length) {
     const ans = await ask(`  ${existingUsers.length} persona(s) already exist. Add another? [Y/n]: `);
     if (ans.toLowerCase() === "n") {
-      console.log("  Use 'fastforms add user' or 'fastforms add business' to add more.\n");
+      console.log("  Use 'fastforms add user|business|form' to add more.\n");
       closeRL();
       return;
     }
@@ -202,7 +261,16 @@ async function init() {
   const bizSlug = saveBusinessPersona(dir, biz);
   console.log(`\n  Saved businesses/${bizSlug}.json`);
 
+  const addForm = await ask("\n  Add a form persona now? (org + purpose + form-specific answers) [y/N]: ");
+  if (addForm.toLowerCase() === "y") {
+    console.log("\n  --- Form persona ---\n");
+    const form = await promptForm();
+    const formSlug = saveFormPersona(dir, form);
+    console.log(`\n  Saved forms/${formSlug}.json`);
+  }
+
   console.log(`\n  Personas saved to ${dir}/`);
+  console.log("  Tip: add form-specific context with 'fastforms add form'");
   console.log("  Next: npx @1dolinski/fastforms fill <url>\n");
   closeRL();
 }
@@ -213,8 +281,8 @@ async function init() {
 
 async function addPersona() {
   const type = args[1];
-  if (type !== "user" && type !== "business") {
-    console.error("  Usage: fastforms add user|business\n");
+  if (type !== "user" && type !== "business" && type !== "form") {
+    console.error("  Usage: fastforms add user|business|form\n");
     process.exit(1);
   }
 
@@ -226,11 +294,16 @@ async function addPersona() {
     const user = await promptUser();
     const slug = saveUserPersona(dir, user);
     console.log(`\n  Saved users/${slug}.json to ${dir}/\n`);
-  } else {
+  } else if (type === "business") {
     console.log("\n  --- New business persona ---\n");
     const biz = await promptBusiness();
     const slug = saveBusinessPersona(dir, biz);
     console.log(`\n  Saved businesses/${slug}.json to ${dir}/\n`);
+  } else {
+    console.log("\n  --- New form persona ---\n");
+    const form = await promptForm();
+    const slug = saveFormPersona(dir, form);
+    console.log(`\n  Saved forms/${slug}.json to ${dir}/\n`);
   }
   closeRL();
 }
@@ -250,6 +323,7 @@ function listAll() {
 
   const users = listPersonaFiles(dir, "user");
   const businesses = listPersonaFiles(dir, "business");
+  const forms = listPersonaFiles(dir, "form");
 
   console.log(`\n  Personas in ${dir}/\n`);
 
@@ -276,6 +350,20 @@ function listAll() {
   }
 
   console.log();
+
+  if (forms.length) {
+    console.log("  Form personas:");
+    for (const f of forms) {
+      const urls = f.data?.urls?.length ? ` [${f.data.urls.join(", ")}]` : "";
+      const purpose = f.data?.purpose ? ` — ${f.data.purpose}` : "";
+      const facts = f.data?.facts ? Object.keys(f.data.facts).length : 0;
+      console.log(`    ${f.slug}${urls}${purpose}${facts ? ` (${facts} answers)` : ""}`);
+    }
+  } else {
+    console.log("  No form personas. Run: fastforms add form");
+  }
+
+  console.log();
 }
 
 // ---------------------------------------------------------------------------
@@ -291,9 +379,11 @@ async function edit() {
 
   const users = listPersonaFiles(dir, "user");
   const businesses = listPersonaFiles(dir, "business");
+  const forms = listPersonaFiles(dir, "form");
   const all = [
     ...users.map((u) => ({ ...u, type: "user", label: `user: ${u.slug} (${u.data?.fullName || u.data?.name || "?"})` })),
     ...businesses.map((b) => ({ ...b, type: "business", label: `biz: ${b.slug} (${b.data?.name || "?"})` })),
+    ...forms.map((f) => ({ ...f, type: "form", label: `form: ${f.slug} (${f.data?.organization || f.data?.name || "?"})` })),
   ];
 
   if (!all.length) {
@@ -317,13 +407,20 @@ async function edit() {
     if (updated.name !== picked.data?.name) deletePersonaFile(dir, "user", picked.slug);
     const slug = saveUserPersona(dir, updated);
     console.log(`\n  Updated users/${slug}.json\n`);
-  } else {
+  } else if (picked.type === "business") {
     const existing = dump.businessPersonas.find((p) => p.name === picked.data?.name) || null;
     console.log(`\n  --- Edit business: ${picked.slug} ---\n`);
     const updated = await promptBusiness(existing);
     if (updated.name !== picked.data?.name) deletePersonaFile(dir, "business", picked.slug);
     const slug = saveBusinessPersona(dir, updated);
     console.log(`\n  Updated businesses/${slug}.json\n`);
+  } else {
+    const existing = (dump.formPersonas || []).find((p) => p.name === picked.data?.name) || null;
+    console.log(`\n  --- Edit form: ${picked.slug} ---\n`);
+    const updated = await promptForm(existing);
+    if (updated.name !== picked.data?.name) deletePersonaFile(dir, "form", picked.slug);
+    const slug = saveFormPersona(dir, updated);
+    console.log(`\n  Updated forms/${slug}.json\n`);
   }
   closeRL();
 }
@@ -341,9 +438,11 @@ async function remove() {
 
   const users = listPersonaFiles(dir, "user");
   const businesses = listPersonaFiles(dir, "business");
+  const forms = listPersonaFiles(dir, "form");
   const all = [
     ...users.map((u) => ({ ...u, type: "user", label: `user: ${u.slug} (${u.data?.fullName || u.data?.name || "?"})` })),
     ...businesses.map((b) => ({ ...b, type: "business", label: `biz: ${b.slug} (${b.data?.name || "?"})` })),
+    ...forms.map((f) => ({ ...f, type: "form", label: `form: ${f.slug} (${f.data?.name || "?"})` })),
   ];
 
   if (!all.length) {
@@ -361,7 +460,8 @@ async function remove() {
   const confirm = await ask(`  Delete ${picked.type}/${picked.slug}? [y/N]: `);
   if (confirm.toLowerCase() === "y") {
     deletePersonaFile(dir, picked.type, picked.slug);
-    console.log(`  Removed ${picked.type}s/${picked.slug}.json\n`);
+    const dirName = picked.type === "user" ? "users" : picked.type === "business" ? "businesses" : "forms";
+    console.log(`  Removed ${dirName}/${picked.slug}.json\n`);
   } else {
     console.log("  Cancelled.\n");
   }
@@ -408,7 +508,13 @@ async function fill() {
 
   const personas = dump.personas || [];
   const bizPersonas = dump.businessPersonas || [];
-  console.log(`  Found ${personas.length} user persona(s), ${bizPersonas.length} business persona(s).`);
+  const formPersonas = dump.formPersonas || [];
+  const counts = [
+    `${personas.length} user`,
+    `${bizPersonas.length} business`,
+    `${formPersonas.length} form`,
+  ].join(", ");
+  console.log(`  Found ${counts} persona(s).`);
 
   if (!personas.length && !bizPersonas.length) {
     console.error("\n  No personas found.");
@@ -423,7 +529,21 @@ async function fill() {
 
   const userHint = flag("--user");
   const bizHint = flag("--business");
+  const formHint = flag("--form");
   const { user, biz } = await selectPersonas(dump, userHint, bizHint);
+
+  // Form persona: auto-match by URL, then hint, then interactive
+  let form = null;
+  if (formPersonas.length) {
+    if (formHint) {
+      form = formPersonas.find((f) =>
+        f.name.toLowerCase().includes(formHint.toLowerCase())
+      ) || null;
+    }
+    if (!form) {
+      form = await selectFormPersona(formPersonas, formUrl);
+    }
+  }
 
   if (!user && !biz) {
     console.error("\n  No matching personas.");
@@ -431,7 +551,7 @@ async function fill() {
     process.exit(1);
   }
 
-  showPersonaDetails(user, biz);
+  showPersonaDetails(user, biz, form);
 
   const pages = await browser.pages();
   const host = new URL(formUrl).host;
@@ -446,15 +566,18 @@ async function fill() {
     console.log(`\n  Opened ${formUrl}`);
   }
 
-  await fillForm(page, formUrl, user, biz);
+  await fillForm(page, formUrl, user, biz, form);
 
   if (hasFlag("--web")) {
     await offerSetDefaults(user, biz);
   } else {
-    // Save defaults to local dir
     const dir = findFastformsDir();
-    if (dir && user && biz) {
-      saveDefaults(dir, { defaultUser: user.name, defaultBusiness: biz.name });
+    if (dir) {
+      const patch = {};
+      if (user) patch.defaultUser = user.name;
+      if (biz) patch.defaultBusiness = biz.name;
+      if (form) patch.defaultForm = form.name;
+      saveDefaults(dir, patch);
     }
   }
 

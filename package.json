@@ -1,6 +1,6 @@
 {
   "name": "@1dolinski/fastforms",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Fill any form fast. Manage personas on the web, fill forms from your terminal.",
   "type": "module",
   "bin": {
